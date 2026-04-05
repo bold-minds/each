@@ -81,6 +81,10 @@ func Filter[T any](s []T, pred func(T) bool) []T {
 // group preserve their relative order from the input slice.
 //
 // Returns a non-nil empty map for nil or empty input.
+//
+// Unlike KeyBy, GroupBy deliberately does not pass a size hint to make:
+// the number of distinct groups is unknown a priori and hinting len(s)
+// would over-allocate for any input that isn't strictly one-per-group.
 func GroupBy[T any, K comparable](s []T, keyFn func(T) K) map[K][]T {
 	result := make(map[K][]T)
 	for _, v := range s {

@@ -56,6 +56,11 @@ jobs:
         if: runner.os != 'Windows'
         run: go test -v -race -coverprofile=coverage.out ./...
 
+      # Windows intentionally omits -race: the race detector requires cgo
+      # and a C toolchain on Windows, which we don't ship on the runner.
+      # The functions in this package only write to maps inside a single
+      # goroutine, so there's nothing -race would catch anyway. Don't "fix"
+      # this by adding -race without also provisioning a C toolchain.
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
         run: go test -v -coverprofile="coverage.out" ./...

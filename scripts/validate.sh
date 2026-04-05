@@ -24,6 +24,10 @@ START_TIME=$(date +%s)
 
 # 🔧 Configuration
 MODE=${1:-"local"}  # local|ci
+if [[ "$MODE" != "local" && "$MODE" != "ci" ]]; then
+    echo "ERROR: unknown mode '$MODE' (expected 'local' or 'ci')" >&2
+    exit 2
+fi
 COVERAGE_THRESHOLD=${COVERAGE_THRESHOLD:-80}
 TEST_TIMEOUT=${TEST_TIMEOUT:-10m}
 INTEGRATION_TAG=${INTEGRATION_TAG:-integration}
@@ -177,11 +181,10 @@ run_linting() {
 
 # 🏗️ Build validation
 validate_build() {
-    # Clean build
-    print_info "Cleaning build cache..."
-    go clean -cache
-    
-    # Build all packages
+    # Note: intentionally NOT running `go clean -cache` here. That wipes the
+    # user-wide Go build cache (~/.cache/go-build) and would force a full
+    # rebuild of every other Go project on the developer's machine. The
+    # cache is content-addressed and does not go stale.
     if ! go build ./...; then
         return 1
     fi
@@ -217,15 +220,20 @@ validate_build() {
 
 # 🧪 Unit tests
 run_unit_tests() {
-    # Always generate coverage for badge generation
-    local test_args="-race -timeout=$TEST_TIMEOUT -coverprofile=coverage.out -covermode=atomic"
-    
+    # Array form — avoids word-splitting pitfalls if flags ever contain spaces.
+    local test_args=(
+        -race
+        -timeout="$TEST_TIMEOUT"
+        -coverprofile=coverage.out
+        -covermode=atomic
+    )
+
     print_info "Running unit tests with race detection..."
-    
-    if ! go test $test_args ./...; then
+
+    if ! go test "${test_args[@]}" ./...; then
         return 1
     fi
-    
+
     print_info "All unit tests passed! 🧪"
     return 0
 }
@@ -265,25 +273,18 @@ validate_coverage() {
         print_warning "No coverage file found, skipping coverage check"
         return 0
     fi
-    
-    print_info "Analyzing test coverage..."
-    
-    # Get main package coverage (from test output, not total which includes examples)
-    local coverage_percent=""
-    # Extract main package coverage from the test output (e.g., "coverage: 84.7% of statements")
-    if [[ -f "coverage.out" ]]; then
-        # Try to get main package coverage from go test output or coverage file
-        coverage_percent=$(go test -coverprofile=temp_coverage.out ./. 2>/dev/null | grep "coverage:" | grep -oE '[0-9]+\.[0-9]+%' | sed 's/%//' | head -1 || true)
-        rm -f temp_coverage.out 2>/dev/null
 
-        # If that fails, fall back to total coverage
-        if [[ -z "$coverage_percent" ]]; then
-            coverage_percent=$(go tool cover -func=coverage.out | grep total | grep -oE '[0-9]+\.[0-9]+')
-        fi
-    else
+    print_info "Analyzing test coverage..."
+
+    # Parse the total from the existing coverage.out that run_unit_tests
+    # already produced. Do NOT re-run the test suite just to re-extract
+    # the number — coverage.out is authoritative.
+    local coverage_percent
+    coverage_percent=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
+    if [[ -z "$coverage_percent" ]]; then
         coverage_percent="0.0"
     fi
-    
+
     print_info "Current coverage: ${coverage_percent}%"
     
     # Check threshold
@@ -305,7 +306,7 @@ validate_coverage() {
 # 📚 Documentation validation
 validate_documentation() {
     print_info "Checking documentation..."
-    
+
     # Check for main README.md in project root
     if [[ ! -f "README.md" ]]; then
         print_warning "No README.md found in project root"
@@ -316,16 +317,20 @@ validate_documentation() {
     else
         print_info "Project README.md found ✓"
     fi
-    
-    # Optional: Check for README.md in common package directories (if they exist)
-    local missing_readme=0
+
+    # Optional: check for README.md in common package directories if any
+    # exist. nullglob prevents iterating over the literal glob pattern
+    # when no matches are found (the flat-layout case for this repo).
+    local saved_nullglob
+    saved_nullglob=$(shopt -p nullglob || true)
+    shopt -s nullglob
     for dir in internal/*/ pkg/*/ cmd/*/; do
-        if [[ -d "$dir" && ! -f "${dir}README.md" ]]; then
+        if [[ ! -f "${dir}README.md" ]]; then
             print_warning "Missing README.md in $dir (optional)"
-            # Don't increment counter - this is just informational
         fi
     done
-    
+    eval "$saved_nullglob"
+
     print_info "Documentation validation completed! 📚"
     return 0
 }
@@ -406,16 +411,14 @@ generate_badges() {
         print_warning "golangci-lint not available, generated fallback badge"
     fi
     
-    # Generate coverage badge (if coverage file exists)
+    # Generate coverage badge (if coverage file exists). Parse the
+    # already-produced coverage.out rather than re-running the test
+    # suite — coverage.out is authoritative.
     if [[ -f "coverage.out" ]]; then
-        local coverage_percent=""
-        # Use the same logic as coverage validation to get main package coverage
-        coverage_percent=$(go test -coverprofile=temp_coverage.out ./. 2>/dev/null | grep "coverage:" | grep -oE '[0-9]+\.[0-9]+%' | sed 's/%//' | head -1 || true)
-        rm -f temp_coverage.out 2>/dev/null
-
-        # If that fails, fall back to total coverage
+        local coverage_percent
+        coverage_percent=$(go tool cover -func=coverage.out 2>/dev/null | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
         if [[ -z "$coverage_percent" ]]; then
-            coverage_percent=$(go tool cover -func=coverage.out 2>/dev/null | grep total | awk '{print $3}' | sed 's/%//' || echo "0")
+            coverage_percent="0"
         fi
         
         # Determine color based on coverage

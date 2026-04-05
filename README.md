@@ -75,13 +75,16 @@ type User struct {
 func main() {
     users := []User{
         {ID: 1, Name: "alice", Role: "admin", Active: true},
-        {ID: 2, Name: "bob",   Role: "editor", Active: false},
-        {ID: 3, Name: "carol", Role: "admin", Active: true},
+        {ID: 2, Name: "bob",   Role: "editor", Active: true},
+        {ID: 3, Name: "carol", Role: "admin", Active: false},
         {ID: 4, Name: "dave",  Role: "editor", Active: true},
     }
 
-    // Find by predicate
-    alice, _ := each.Find(users, func(u User) bool { return u.Name == "alice" })
+    // Find by predicate — always check the ok return
+    alice, ok := each.Find(users, func(u User) bool { return u.Name == "alice" })
+    if !ok {
+        panic("alice missing")
+    }
     fmt.Println(alice.Role) // "admin"
 
     // Filter to a new slice (non-mutating)
@@ -162,7 +165,7 @@ The common pattern for "I have a slice but I want O(1) lookup by field."
 
 ### `Partition` — split by predicate into two slices
 
-Splits `s` into two slices: one containing elements matching `pred`, one containing elements that don't. More efficient than two `Filter` calls when you need both halves.
+Splits `s` into two slices: one containing elements matching `pred`, one containing elements that don't. Iterates `s` exactly once and calls `pred` once per element, which is cheaper in CPU than two `Filter` calls with opposite predicates. It does pre-allocate `len(s)` capacity for each half (so the total reserved capacity is `2×len(s)`); for strongly skewed splits on very large inputs, two `Filter` calls or a manual loop may use less peak memory.
 
 ```go
 active, inactive := each.Partition(users, func(u User) bool { return u.Active })
@@ -220,7 +223,7 @@ If you want these, [`samber/lo`](https://github.com/samber/lo) has all of them. 
 
 ## 🏎️ Performance
 
-Measured on Go 1.26 (Intel Ultra 9 275HX; library targets Go 1.21+) on 1000-element slices.
+Measured on Go 1.26 (Intel Ultra 9 275HX) on 1000-element slices. The library targets Go 1.21+; generics codegen has improved across minor releases, so these numbers are upper bounds for current Go and likely slower on older toolchains.
 
 ```
 BenchmarkFind_Hit-24           773994     856.5 ns/op        0 B/op     0 allocs/op

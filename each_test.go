@@ -332,6 +332,32 @@ func TestEvery_ShortCircuits(t *testing.T) {
 	}
 }
 
+func TestEvery_PredicateNotCalledOnEmpty(t *testing.T) {
+	// Documented invariant: Every returns true on empty/nil input
+	// without invoking the predicate at all.
+	for _, tc := range []struct {
+		name string
+		in   []int
+	}{
+		{"nil", nil},
+		{"empty", []int{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			got := each.Every(tc.in, func(int) bool {
+				calls++
+				return false
+			})
+			if !got {
+				t.Errorf("Every(%s) = false, want true (vacuous truth)", tc.name)
+			}
+			if calls != 0 {
+				t.Errorf("Every(%s) called predicate %d times, want 0", tc.name, calls)
+			}
+		})
+	}
+}
+
 // =============================================================================
 // Adversarial — edge cases the to-review lessons told me to test
 // =============================================================================
@@ -405,27 +431,30 @@ func TestImmutability(t *testing.T) {
 // TestResultIsNotAliased verifies that mutating the returned slice/map
 // does not affect the input slice.
 func TestResultIsNotAliased(t *testing.T) {
-	in := []User{{ID: 1, Name: "alice"}, {ID: 2, Name: "bob"}}
-
-	// Filter returns a new slice
-	filtered := each.Filter(in, func(u User) bool { return true })
-	if len(filtered) > 0 {
+	t.Run("Filter", func(t *testing.T) {
+		in := []User{{ID: 1, Name: "alice"}, {ID: 2, Name: "bob"}}
+		filtered := each.Filter(in, func(u User) bool { return true })
+		if len(filtered) == 0 {
+			t.Fatal("expected non-empty result")
+		}
 		filtered[0].Name = "mutated"
-		if in[0].Name == "mutated" {
-			t.Error("Filter result shares backing storage with input")
+		if in[0].Name != "alice" {
+			t.Errorf("Filter result shares backing storage with input: in[0].Name = %q", in[0].Name)
 		}
-	}
+	})
 
-	// Partition returns two new slices
-	matched, _ := each.Partition(in, func(u User) bool { return true })
-	if len(matched) > 0 {
-		matched[0].Name = "mutated2"
-		// The source slice should still have original name (in[0] may have been
-		// "mutated" from the previous block; re-check against Name != "mutated2")
-		if in[0].Name == "mutated2" {
-			t.Error("Partition result shares backing storage with input")
+	t.Run("Partition", func(t *testing.T) {
+		in := []User{{ID: 1, Name: "alice"}, {ID: 2, Name: "bob"}}
+		matched, unmatched := each.Partition(in, func(u User) bool { return u.ID == 1 })
+		if len(matched) == 0 || len(unmatched) == 0 {
+			t.Fatal("expected both halves non-empty")
 		}
-	}
+		matched[0].Name = "mutated-matched"
+		unmatched[0].Name = "mutated-unmatched"
+		if in[0].Name != "alice" || in[1].Name != "bob" {
+			t.Errorf("Partition result shares backing storage with input: %+v", in)
+		}
+	})
 }
 
 // TestCustomComparableKeyTypes verifies that GroupBy and KeyBy work with
@@ -478,6 +507,35 @@ func TestStructKey(t *testing.T) {
 	if len(byPoint[Point{0, 0}]) != 2 {
 		t.Errorf("got %d records at origin, want 2", len(byPoint[Point{0, 0}]))
 	}
+}
+
+// TestNonComparableKeyPanics pins the documented behavior that GroupBy
+// and KeyBy panic when the key function returns a non-comparable dynamic
+// type stored in an `any`. This is surfaced by Go's map implementation —
+// each does not recover, and callers must ensure keys are comparable.
+func TestNonComparableKeyPanics(t *testing.T) {
+	type Row struct {
+		Tags []string
+	}
+	rows := []Row{{Tags: []string{"a"}}, {Tags: []string{"b"}}}
+
+	t.Run("GroupBy", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic from non-comparable key in GroupBy, got none")
+			}
+		}()
+		_ = each.GroupBy(rows, func(r Row) any { return r.Tags })
+	})
+
+	t.Run("KeyBy", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic from non-comparable key in KeyBy, got none")
+			}
+		}()
+		_ = each.KeyBy(rows, func(r Row) any { return r.Tags })
+	})
 }
 
 // TestPredicateCapturesState verifies that a predicate with captured state

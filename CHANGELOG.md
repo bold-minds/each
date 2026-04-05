@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] — Initial release
+## [0.1.0] - 2026-04-04
+
+Initial release.
 
 ### Added
 - `Find[T any](s []T, pred func(T) bool) (T, bool)` — first matching element, returns value + bool

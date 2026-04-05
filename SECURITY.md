@@ -2,11 +2,9 @@
 
 ## Supported Versions
 
-We actively support the following versions with security updates:
-
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
+| 0.x.x   | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
@@ -18,9 +16,9 @@ Please do not report security vulnerabilities through public GitHub issues, disc
 
 ### 2. Report Privately
 
-Send an email to **security@boldminds.tech** with the following information:
+Send an email to **security@boldminds.tech** with:
 
-- **Subject**: Security Vulnerability in bold-minds/[REPO_NAME]
+- **Subject**: Security Vulnerability in bold-minds/each
 - **Description**: Detailed description of the vulnerability
 - **Steps to Reproduce**: Clear steps to reproduce the issue
 - **Impact**: Potential impact and severity assessment
@@ -32,56 +30,44 @@ Send an email to **security@boldminds.tech** with the following information:
 - **Status Update**: Within 7 days
 - **Resolution**: Varies based on complexity, typically within 30 days
 
-### 4. Disclosure Process
-
-1. We will acknowledge receipt of your vulnerability report
-2. We will investigate and validate the vulnerability
-3. We will develop and test a fix
-4. We will coordinate disclosure timing with you
-5. We will release a security update
-6. We will publicly acknowledge your responsible disclosure (if desired)
-
 ## Security Considerations
 
-[Replace this section with security considerations specific to your project]
+`each` is a pure-computation library with a very small attack surface:
 
-### [PROJECT_SPECIFIC_SECURITY_SECTION]
+- **No network I/O.** `each` does not make network calls.
+- **No file I/O.** `each` does not read or write files.
+- **No reflection.** All operations use Go's generics and concrete type constraints.
+- **No external dependencies.** Pure Go stdlib.
+- **Immutable.** `each` never modifies input slices.
+- **Nil-safe.** All functions handle nil slices without panicking.
 
-[Add project-specific security considerations here. Examples:]
+### Known runtime-panic sources from caller misuse
 
-- **Input Validation**: Always validate external inputs
-- **Authentication**: Implement proper authentication mechanisms
-- **Authorization**: Ensure proper access controls
-- **Data Protection**: Handle sensitive data appropriately
-- **Rate Limiting**: Implement rate limiting for public APIs
-- **Error Handling**: Avoid exposing sensitive information in error messages
+`each` does not panic on any documented input. However, `GroupBy` and
+`KeyBy` use the caller-provided key function's return value as a Go map
+key. If the key function returns a non-comparable dynamic type (e.g.,
+a slice or map stored inside an `any`), Go's map implementation will
+panic at runtime with a "hash of unhashable type" error. `each` does
+not recover from these panics. Callers must ensure their key functions
+return comparable values.
 
-### Best Practices
+### Predicates with side effects
 
-1. **[PRACTICE_1]**: [Description of security practice]
-2. **[PRACTICE_2]**: [Description of security practice]
-3. **[PRACTICE_3]**: [Description of security practice]
-4. **Input Validation**: Always validate inputs from external sources
-5. **Error Handling**: Properly handle all error returns from library functions
-
-### Known Limitations
-
-[List any known security limitations of your project]
-
-- **[LIMITATION_1]**: [Description]
-- **[LIMITATION_2]**: [Description]
+All `each` functions accept a predicate or key function supplied by the
+caller. These functions are evaluated one or more times per element.
+`each` does not sandbox predicate execution — if a predicate panics,
+the panic propagates to the caller. If a predicate has side effects
+(I/O, global state mutation, etc.), those side effects occur during
+the call. For `Every`, the short-circuit behavior means that elements
+after the first false are not visited, so their predicate side effects
+will not fire.
 
 ## Security Updates
 
-Security updates will be:
-
-- Released as patch versions (e.g., 1.0.1)
-- Documented in the CHANGELOG.md
-- Announced through GitHub releases
-- Tagged with security labels
+Security updates will be released as patch versions (e.g., 0.1.1),
+documented in CHANGELOG.md, and announced through GitHub releases.
 
 ## Acknowledgments
 
-We appreciate responsible disclosure and will acknowledge security researchers who help improve the security of this project.
-
-Thank you for helping keep our project and users safe!
+We appreciate responsible disclosure and will acknowledge security
+researchers who help improve the security of this project.

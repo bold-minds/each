@@ -1,201 +1,122 @@
-# Contributing to [PROJECT_NAME]
+# Contributing to `each`
 
-We love your input! We want to make contributing to this project as easy and transparent as possible, whether it's:
+Thanks for your interest in contributing. This guide covers the operational process. For the **why** — the design principles every contribution is tested against — see **[bold-minds/oss/PRINCIPLES.md](https://github.com/bold-minds/oss/blob/main/PRINCIPLES.md)**.
 
-- Reporting a bug
-- Discussing the current state of the code
-- Submitting a fix
-- Proposing new features
-- Becoming a maintainer
+## 🎯 Before You Start
 
-## 🚀 Development Process
+Every contribution is measured against the four Bold Minds principles: **outcome naming**, **one way to do each thing**, **get out of the way**, and **non-goals explicit**. If your proposed change doesn't honor these, it will not be merged.
 
-We use GitHub to host code, to track issues and feature requests, as well as accept pull requests.
+**Read [PRINCIPLES.md](https://github.com/bold-minds/oss/blob/main/PRINCIPLES.md) first.**
 
-### Pull Requests
+## 🔧 Development Setup
 
-1. Fork the repo and create your branch from `main`.
-2. If you've added code that should be tested, add tests.
-3. If you've changed APIs, update the documentation.
-4. Ensure the test suite passes.
-5. Make sure your code lints.
-6. Issue that pull request!
+**Requirements:** Go 1.21 or later, Git, Bash.
+
+```bash
+git clone https://github.com/bold-minds/each.git
+cd each
+go test ./...              # unit tests
+go test -race ./...        # race detection
+go test -bench=. ./...     # benchmarks
+./scripts/validate.sh      # full validation pipeline
+./scripts/validate.sh ci   # strict CI mode
+```
+
+Your contribution must pass `./scripts/validate.sh ci` before submitting.
+
+## 📁 Project Structure
+
+```
+each/
+├── each.go                # Implementation (single file)
+├── each_test.go           # Unit tests with adversarial coverage
+├── bench_test.go          # Benchmarks
+├── examples/              # Runnable examples
+├── scripts/
+│   └── validate.sh        # Validation pipeline
+├── README.md
+├── CONTRIBUTING.md        # This file
+├── CHANGELOG.md
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
+├── LICENSE
+└── go.mod
+```
+
+Flat layout. No `internal/` directory.
+
+## 🎨 Code Style
+
+### Naming
+- Outcome naming per PRINCIPLES.md. Function names describe the predicate-based operation performed.
+
+### Error Handling
+- Functions **must not panic** on valid input.
+- No error returns — operations either succeed or return sensible defaults (zero values, non-nil empty slices/maps).
+- Every function is nil-safe.
+
+### Documentation
+- Every exported function has a doc comment describing behavior, edge cases (nil/empty input), and ordering guarantees.
+- Panic risks from caller-side misuse (non-comparable key types from `GroupBy`/`KeyBy`) are documented in the package doc.
+
+### Dependencies
+- **Zero external dependencies.** `each` is pure stdlib.
 
 ## 🧪 Testing
 
-We maintain high test coverage and all contributions should include appropriate tests.
+**Coverage target: 100% of exported functions.**
+
+**Every PR must include adversarial tests.** The lesson from the wider Bold Minds library family: passing validation is necessary but insufficient. Tests must explicitly verify:
+
+1. **Non-nil return guarantees** — no function returns `nil` for empty results when the docs promise "non-nil empty"
+2. **Immutability** — input slices are byte-identical before and after the call
+3. **Result non-aliasing** — mutating the returned slice does not affect the input
+4. **Custom comparable key types** — `GroupBy`/`KeyBy` must work with named types, structs, and any other comparable Go type
+5. **Short-circuit evaluation** — `Every` must stop on the first false; write a counter-based test that would catch a regression
+6. **Stateful predicates** — closures with captured state must work (common real-world pattern)
 
 ```bash
-# Run all tests
 go test -v ./...
-
-# Run tests with race detection
 go test -race ./...
-
-# Run benchmarks
-go test -bench=. ./...
-
-# Check test coverage
 go test -cover ./...
+go test -bench=. -benchmem ./...
 ```
 
-## 📝 Code Style
+## 📝 Pull Request Process
 
-We follow standard Go conventions:
+### PR Checklist
 
-- Use `gofmt` to format your code
-- Use `golint` and `go vet` to catch common issues
-- Follow effective Go guidelines
-- Write clear, self-documenting code
-- Add comments for exported functions and types
+- [ ] **Outcome naming** — does the function name describe what the caller gets?
+- [ ] **One way** — does any existing function (this library or stdlib) already do this?
+- [ ] **Get out of the way** — can a Go dev use this from the signature alone?
+- [ ] **Non-goals** — does this violate any of the library's stated non-goals?
+- [ ] Tests cover 100% of new code
+- [ ] Adversarial tests included (nil returns, immutability, aliasing)
+- [ ] Benchmarks added for new exported functions
+- [ ] README updated (if adding or changing exported functions)
+- [ ] CHANGELOG.md updated
+- [ ] `./scripts/validate.sh ci` passes locally
 
-### Code Organization
+## 🆕 Adding a New Function
 
-- Keep functions focused and small
-- Use meaningful variable and function names
-- Group related functionality together
-- Maintain consistent error handling patterns
+`each` is deliberately scoped to seven functions. New additions must clear a high bar:
 
-## 🐛 Bug Reports
+1. Read the library's non-goals in [README.md](README.md#-whats-deliberately-not-here) and [PRINCIPLES.md](https://github.com/bold-minds/oss/blob/main/PRINCIPLES.md)
+2. Prove the stdlib gap. Current Go's `slices` package is more capable than many realize.
+3. Confirm the function operates on a single slice with a predicate or key function (operations on multiple slices belong in [`bold-minds/list`](https://github.com/bold-minds/list)).
+4. Show real-world evidence of the pain.
+5. Reject anything that is a thin wrapper around `slices.IndexFunc`, `slices.ContainsFunc`, or other stdlib helpers.
 
-We use GitHub issues to track public bugs. Report a bug by [opening a new issue](https://github.com/bold-minds/[REPO_NAME]/issues/new).
+## 🏷️ Versioning and Releases
 
-**Great Bug Reports** tend to have:
+- Semantic versioning
+- v0.x: API may change between minor versions
+- v1.0+: breaking changes require major version bump
 
-- A quick summary and/or background
-- Steps to reproduce
-  - Be specific!
-  - Give sample code if you can
-- What you expected would happen
-- What actually happens
-- Notes (possibly including why you think this might be happening, or stuff you tried that didn't work)
+## 🙏 Code of Conduct
 
-### Bug Report Template
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-```markdown
-**Describe the bug**
-A clear and concise description of what the bug is.
+## 📄 License
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
-
-**Expected behavior**
-A clear and concise description of what you expected to happen.
-
-**Code Sample**
-```go
-// Minimal code sample that reproduces the issue
-```
-
-**Environment:**
-- Go version: [e.g. 1.21]
-- OS: [e.g. macOS, Linux, Windows]
-- Library version: [e.g. v1.0.0]
-
-**Additional context**
-Add any other context about the problem here.
-```
-
-## 💡 Feature Requests
-
-We welcome feature requests! Please provide:
-
-- **Use case**: Describe the problem you're trying to solve
-- **Proposed solution**: How you envision the feature working
-- **Alternatives considered**: Other approaches you've thought about
-- **Additional context**: Any other relevant information
-
-## 🏗️ Development Setup
-
-1. **Prerequisites**
-   ```bash
-   # Go 1.21 or later
-   go version
-   ```
-
-2. **Clone and setup**
-   ```bash
-   git clone https://github.com/bold-minds/id.git
-   cd id
-   go mod download
-   ```
-
-3. **Run tests**
-   ```bash
-   go test -v ./...
-   ```
-
-4. **Run benchmarks**
-   ```bash
-   go test -bench=. ./...
-   ```
-
-## 📋 Commit Guidelines
-
-We follow conventional commits for clear history:
-
-- `feat:` new feature
-- `fix:` bug fix
-- `docs:` documentation changes
-- `test:` adding or updating tests
-- `refactor:` code refactoring
-- `perf:` performance improvements
-- `chore:` maintenance tasks
-
-### Examples
-
-```
-feat: add batch generation with custom time ranges
-fix: resolve race condition in entropy generation
-docs: update README with new API examples
-test: add comprehensive validation tests
-perf: optimize string conversion allocations
-```
-
-## 🔄 Release Process
-
-Releases follow semantic versioning (SemVer):
-
-- **MAJOR**: incompatible API changes
-- **MINOR**: backwards-compatible functionality additions
-- **PATCH**: backwards-compatible bug fixes
-
-## 🤝 Code of Conduct
-
-### Our Pledge
-
-We pledge to make participation in our project a harassment-free experience for everyone, regardless of age, body size, disability, ethnicity, gender identity and expression, level of experience, nationality, personal appearance, race, religion, or sexual identity and orientation.
-
-### Our Standards
-
-**Positive behavior includes:**
-- Using welcoming and inclusive language
-- Being respectful of differing viewpoints and experiences
-- Gracefully accepting constructive criticism
-- Focusing on what is best for the community
-- Showing empathy towards other community members
-
-**Unacceptable behavior includes:**
-- Trolling, insulting/derogatory comments, and personal attacks
-- Public or private harassment
-- Publishing others' private information without explicit permission
-- Other conduct which could reasonably be considered inappropriate
-
-## 📞 Getting Help
-
-- **Documentation**: Check the README and code comments
-- **Issues**: Search existing issues before creating new ones
-- **Discussions**: Use GitHub Discussions for questions and ideas
-
-## 🏆 Recognition
-
-Contributors will be recognized in:
-- The project's README
-- Release notes for significant contributions
-- Special thanks in documentation
-
-Thank you for contributing! 🎉
+By contributing, you agree your contributions are licensed under the MIT License.

@@ -1,44 +1,87 @@
-package oss
+package each_test
 
 import (
 	"testing"
+
+	"github.com/bold-minds/each"
 )
 
-// BenchmarkExampleFunction demonstrates benchmark testing for functions
-func BenchmarkExampleFunction(b *testing.B) {
-	input := "benchmark test input"
-	b.ResetTimer()
-	
+var benchUsers = func() []User {
+	out := make([]User, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		role := "editor"
+		if i%5 == 0 {
+			role = "admin"
+		}
+		out = append(out, User{
+			ID:     i,
+			Name:   "user",
+			Role:   role,
+			Active: i%3 != 0,
+		})
+	}
+	return out
+}()
+
+func BenchmarkFind_Hit(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = ExampleFunction(input)
+		_, _ = each.Find(benchUsers, func(u User) bool { return u.ID == 500 })
 	}
 }
 
-// BenchmarkExampleStruct_Process demonstrates benchmark testing for methods
-func BenchmarkExampleStruct_Process(b *testing.B) {
-	example := NewExampleStruct("benchmark", 100)
-	b.ResetTimer()
-	
+func BenchmarkFind_Miss(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = example.Process()
+		_, _ = each.Find(benchUsers, func(u User) bool { return u.ID == -1 })
 	}
 }
 
-// BenchmarkExampleStruct_Validate demonstrates benchmark testing for validation
-func BenchmarkExampleStruct_Validate(b *testing.B) {
-	example := NewExampleStruct("benchmark", 100)
-	b.ResetTimer()
-	
+func BenchmarkFilter_Half(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = example.Validate()
+		_ = each.Filter(benchUsers, func(u User) bool { return u.Active })
 	}
 }
 
-// BenchmarkNewExampleStruct demonstrates benchmark testing for constructors
-func BenchmarkNewExampleStruct(b *testing.B) {
-	b.ResetTimer()
-	
+func BenchmarkGroupBy(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = NewExampleStruct("benchmark", i)
+		_ = each.GroupBy(benchUsers, func(u User) string { return u.Role })
+	}
+}
+
+func BenchmarkKeyBy(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = each.KeyBy(benchUsers, func(u User) int { return u.ID })
+	}
+}
+
+func BenchmarkPartition(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = each.Partition(benchUsers, func(u User) bool { return u.Active })
+	}
+}
+
+func BenchmarkCount(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = each.Count(benchUsers, func(u User) bool { return u.Role == "admin" })
+	}
+}
+
+func BenchmarkEvery_AllTrue(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = each.Every(benchUsers, func(u User) bool { return u.ID >= 0 })
+	}
+}
+
+func BenchmarkEvery_EarlyFail(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = each.Every(benchUsers, func(u User) bool { return u.ID > 500 })
 	}
 }

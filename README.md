@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/bold-minds/each.svg)](https://pkg.go.dev/github.com/bold-minds/each)
 [![Build](https://img.shields.io/github/actions/workflow/status/bold-minds/each/test.yaml?branch=main&label=tests)](https://github.com/bold-minds/each/actions/workflows/test.yaml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/bold-minds/each)](go.mod)
-[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/clairevnext/7f1197011c2f419e7192c2ba4d530195/raw/coverage.json)](https://github.com/bold-minds/each/actions/workflows/test.yaml)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bold-admin/153d0e42f7568f99e7334add3cfdfe0e/raw/coverage.json)](https://github.com/bold-minds/each/actions/workflows/test.yaml)
 
 **Find, filter, group — slice operations Go stdlib skipped.**
 

@@ -1,13 +1,8 @@
 # each
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bold-minds/each.svg)](https://pkg.go.dev/github.com/bold-minds/each)
-[![Go Version](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/each/main/.github/badges/go-version.json)](https://golang.org/doc/go1.21)
-[![Latest Release](https://img.shields.io/github/v/release/bold-minds/each?logo=github&color=blueviolet)](https://github.com/bold-minds/each/releases)
-[![Last Updated](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/each/main/.github/badges/last-updated.json)](https://github.com/bold-minds/each/commits)
-[![golangci-lint](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/each/main/.github/badges/golangci-lint.json)](https://github.com/bold-minds/each/actions/workflows/test.yaml)
-[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/each/main/.github/badges/coverage.json)](https://github.com/bold-minds/each/actions/workflows/test.yaml)
-[![Dependabot](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/bold-minds/each/main/.github/badges/dependabot.json)](https://github.com/bold-minds/each/security/dependabot)
+[![Build](https://img.shields.io/github/actions/workflow/status/bold-minds/each/test.yaml?branch=main&label=tests)](https://github.com/bold-minds/each/actions/workflows/test.yaml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/bold-minds/each)](go.mod)
 
 **Find, filter, group — slice operations Go stdlib skipped.**
 

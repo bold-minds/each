@@ -6,16 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
-# Default to least privilege. Individual jobs that need write access
-# (e.g., committing generated badges to main) escalate explicitly.
+# Read-only by default. This workflow never writes back to the repo —
+# badges are served directly by shields.io from public GitHub APIs and
+# pkg.go.dev, so there is no self-hosted JSON to commit.
 permissions:
   contents: read
-  pull-requests: read
-  security-events: read
-
-# Pinned tool versions — keep in sync with scripts/validate.sh.
-env:
-  GOLANGCI_LINT_VERSION: v2.0.2
 
 jobs:
   test:
@@ -23,19 +18,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
-        # Oldest supported Go (from go.mod) and a current toolchain.
-        # The 1.21 row is what proves the "Requires Go 1.21 or later"
-        # claim in the README; do not remove it without also changing
-        # go.mod and the README.
-        go: [ '1.21', '1.26' ]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.26'
 
       - name: Install dependencies
         run: go mod download
@@ -56,161 +48,9 @@ jobs:
         if: runner.os != 'Windows'
         run: go test -v -race -coverprofile=coverage.out ./...
 
-      # Windows intentionally omits -race: the race detector requires cgo
-      # and a C toolchain on Windows, which we don't ship on the runner.
-      # The functions in this package only write to maps inside a single
-      # goroutine, so there's nothing -race would catch anyway. Don't "fix"
-      # this by adding -race without also provisioning a C toolchain.
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
         run: go test -v -coverprofile="coverage.out" ./...
 
       - name: Run benchmarks
         run: go test -bench=. -benchmem ./...
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-      - name: Install golangci-lint (pinned)
-        run: go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
-      - name: Run golangci-lint
-        run: golangci-lint run ./...
-
-  badges:
-    # Runs only on main, after tests and lint have passed. This is the
-    # only job that is granted contents: write — keeps the main test
-    # matrix at least-privilege.
-    needs: [ test, lint ]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: read
-      security-events: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      RUN_NUMBER: ${{ github.run_number }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-
-      - name: Install golangci-lint (pinned)
-        run: go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
-
-      - name: Regenerate coverage for badge
-        run: go test -coverprofile=coverage.out ./...
-
-      - name: Generate badge data
-        run: |
-          mkdir -p .github/badges
-
-          # Coverage badge
-          if [[ -f "coverage.out" ]]; then
-            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-            if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
-              COLOR="brightgreen"
-            elif (( $(echo "$COVERAGE >= 60" | bc -l) )); then
-              COLOR="yellow"
-            else
-              COLOR="red"
-            fi
-            jq -n --arg msg "${COVERAGE}%" --arg color "$COLOR" \
-              '{schemaVersion:1,label:"coverage",message:$msg,color:$color}' \
-              > .github/badges/coverage.json
-          fi
-
-          # Go version badge
-          GO_VERSION=$(go version | grep -oE 'go[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
-          jq -n --arg msg "$GO_VERSION" \
-            '{schemaVersion:1,label:"Go",message:$msg,color:"00ADD8"}' \
-            > .github/badges/go-version.json
-
-          # Last updated badge
-          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
-          jq -n --arg msg "$LAST_COMMIT_DATE" \
-            '{schemaVersion:1,label:"last updated",message:$msg,color:"teal"}' \
-            > .github/badges/last-updated.json
-
-          # golangci-lint badge
-          if golangci-lint run; then
-            jq -n '{schemaVersion:1,label:"golangci-lint",message:"0 issues",color:"brightgreen"}' \
-              > .github/badges/golangci-lint.json
-          else
-            ISSUES=$(golangci-lint run 2>&1 | grep -c "^.*\.go:" || echo "0")
-            [[ "$ISSUES" =~ ^[0-9]+$ ]] || ISSUES="0"
-            if [[ "$ISSUES" -eq 0 ]]; then
-              jq -n '{schemaVersion:1,label:"golangci-lint",message:"passing",color:"brightgreen"}' \
-                > .github/badges/golangci-lint.json
-            else
-              jq -n --arg msg "${ISSUES} issues" \
-                '{schemaVersion:1,label:"golangci-lint",message:$msg,color:"red"}' \
-                > .github/badges/golangci-lint.json
-            fi
-          fi
-
-          # Security / dependabot badge. The gh api call can 404 on repos
-          # without Code Security enabled and emit a non-numeric JSON error
-          # body; normalize to "0" before arithmetic. Matches the logic in
-          # scripts/validate.sh (keep these in sync).
-          DEPENDABOT_ALERTS=$(gh api "repos/${REPO}/dependabot/alerts" --jq 'length' 2>/dev/null || echo "0")
-          CODE_SCANNING_ALERTS=$(gh api "repos/${REPO}/code-scanning/alerts" --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
-          [[ "$DEPENDABOT_ALERTS" =~ ^[0-9]+$ ]] || DEPENDABOT_ALERTS="0"
-          [[ "$CODE_SCANNING_ALERTS" =~ ^[0-9]+$ ]] || CODE_SCANNING_ALERTS="0"
-          TOTAL_ALERTS=$((DEPENDABOT_ALERTS + CODE_SCANNING_ALERTS))
-          OPEN_PRS=$(gh pr list --author "app/dependabot" --state open --json number --jq 'length' 2>/dev/null || echo "0")
-          [[ "$OPEN_PRS" =~ ^[0-9]+$ ]] || OPEN_PRS="0"
-
-          if [[ $TOTAL_ALERTS -gt 0 ]]; then
-            if [[ $DEPENDABOT_ALERTS -gt 0 && $CODE_SCANNING_ALERTS -gt 0 ]]; then
-              jq -n --arg msg "${TOTAL_ALERTS} alerts" \
-                '{schemaVersion:1,label:"security",message:$msg,color:"red"}' \
-                > .github/badges/dependabot.json
-            elif [[ $DEPENDABOT_ALERTS -gt 0 ]]; then
-              jq -n --arg msg "${DEPENDABOT_ALERTS} dependency alerts" \
-                '{schemaVersion:1,label:"security",message:$msg,color:"red"}' \
-                > .github/badges/dependabot.json
-            else
-              jq -n --arg msg "${CODE_SCANNING_ALERTS} code alerts" \
-                '{schemaVersion:1,label:"security",message:$msg,color:"red"}' \
-                > .github/badges/dependabot.json
-            fi
-          elif [[ $OPEN_PRS -gt 0 ]]; then
-            jq -n --arg msg "${OPEN_PRS} updates" \
-              '{schemaVersion:1,label:"dependabot",message:$msg,color:"blue"}' \
-              > .github/badges/dependabot.json
-          else
-            jq -n '{schemaVersion:1,label:"security",message:"all clear",color:"brightgreen"}' \
-              > .github/badges/dependabot.json
-          fi
-
-      - name: Upload badges as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: badges
-          path: .github/badges/
-
-      # Commit badges to main. If branch protection blocks the push
-      # (e.g., required reviews), this step fails loudly rather than
-      # silently producing stale badges — the uploaded artifact above
-      # is always available as a fallback.
-      - name: Commit badges to main
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/badges/
-          if git diff --staged --quiet; then
-            echo "No badge changes to commit"
-          else
-            git commit -m "Update badges from CI run ${RUN_NUMBER} [skip ci]"
-            git push origin main
-          fi

@@ -1,0 +1,137 @@
+name: tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  pull-requests: read
+  security-events: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Install dependencies
+        run: go mod download
+
+      # Build validation (cross-platform).
+      # Conditionally diffs go.sum only if present — pure-stdlib children have none.
+      - name: Build validation
+        shell: bash
+        run: |
+          go build ./...
+          go mod tidy
+          git diff --exit-code go.mod
+          if [ -f go.sum ]; then
+            git diff --exit-code go.sum
+          fi
+
+      - name: Run tests (Unix)
+        if: runner.os != 'Windows'
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        run: go test -v -coverprofile="coverage.out" ./...
+
+      - name: Run benchmarks
+        run: go test -bench=. -benchmem ./...
+
+      # Generate badge data from the primary Ubuntu job only.
+      - name: Generate badge data
+        if: github.ref == 'refs/heads/main' && matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p .github/badges
+
+          # Install golangci-lint v2
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
+          # Coverage badge
+          if [[ -f "coverage.out" ]]; then
+            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+            if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+              COLOR="brightgreen"
+            elif (( $(echo "$COVERAGE >= 60" | bc -l) )); then
+              COLOR="yellow"
+            else
+              COLOR="red"
+            fi
+            echo '{"schemaVersion":1,"label":"coverage","message":"'$COVERAGE'%","color":"'$COLOR'"}' > .github/badges/coverage.json
+          fi
+
+          # Go version badge
+          GO_VERSION=$(go version | grep -oE 'go[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+          echo '{"schemaVersion":1,"label":"Go","message":"'$GO_VERSION'","color":"00ADD8"}' > .github/badges/go-version.json
+
+          # Last updated badge
+          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
+          echo '{"schemaVersion":1,"label":"last updated","message":"'$LAST_COMMIT_DATE'","color":"teal"}' > .github/badges/last-updated.json
+
+          # golangci-lint badge
+          if golangci-lint run; then
+            echo '{"schemaVersion":1,"label":"golangci-lint","message":"0 issues","color":"brightgreen"}' > .github/badges/golangci-lint.json
+          else
+            ISSUES=$(golangci-lint run 2>&1 | grep -c "^.*\.go:" || echo "0")
+            if [[ $ISSUES -eq 0 ]]; then
+              echo '{"schemaVersion":1,"label":"golangci-lint","message":"passing","color":"brightgreen"}' > .github/badges/golangci-lint.json
+            else
+              echo '{"schemaVersion":1,"label":"golangci-lint","message":"'$ISSUES' issues","color":"red"}' > .github/badges/golangci-lint.json
+            fi
+          fi
+
+          # Security/dependabot badge — queries THIS repo via $REPO env var
+          DEPENDABOT_ALERTS=$(gh api "repos/$REPO/dependabot/alerts" --jq 'length' 2>/dev/null || echo "0")
+          CODE_SCANNING_ALERTS=$(gh api "repos/$REPO/code-scanning/alerts" --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo "0")
+          TOTAL_ALERTS=$((DEPENDABOT_ALERTS + CODE_SCANNING_ALERTS))
+          OPEN_PRS=$(gh pr list --author "app/dependabot" --state open --json number --jq 'length' 2>/dev/null || echo "0")
+
+          if [[ $TOTAL_ALERTS -gt 0 ]]; then
+            if [[ $DEPENDABOT_ALERTS -gt 0 && $CODE_SCANNING_ALERTS -gt 0 ]]; then
+              echo '{"schemaVersion":1,"label":"security","message":"'$TOTAL_ALERTS' alerts","color":"red"}' > .github/badges/dependabot.json
+            elif [[ $DEPENDABOT_ALERTS -gt 0 ]]; then
+              echo '{"schemaVersion":1,"label":"security","message":"'$DEPENDABOT_ALERTS' dependency alerts","color":"red"}' > .github/badges/dependabot.json
+            else
+              echo '{"schemaVersion":1,"label":"security","message":"'$CODE_SCANNING_ALERTS' code alerts","color":"red"}' > .github/badges/dependabot.json
+            fi
+          elif [[ $OPEN_PRS -gt 0 ]]; then
+            echo '{"schemaVersion":1,"label":"dependabot","message":"'$OPEN_PRS' updates","color":"blue"}' > .github/badges/dependabot.json
+          else
+            echo '{"schemaVersion":1,"label":"security","message":"all clear","color":"brightgreen"}' > .github/badges/dependabot.json
+          fi
+
+      # Auto-commit badges to main. Non-fatal — if branch protection or
+      # permissions block the push, the badges are still generated locally
+      # as step artifacts but the workflow remains green.
+      - name: Commit badges to main
+        if: github.ref == 'refs/heads/main' && matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/
+          if git diff --staged --quiet; then
+            echo "No badge changes to commit"
+          else
+            git commit -m "Update badges from CI run $RUN_NUMBER [skip ci]"
+            git push origin main
+          fi

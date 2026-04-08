@@ -2,72 +2,57 @@
 
 ## Supported Versions
 
+Only the **latest released minor version** receives security patches.
+
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.x.x   | :white_check_mark: |
+| latest  | :white_check_mark: |
+| older   | :x:                |
 
 ## Reporting a Vulnerability
 
-We take security vulnerabilities seriously. If you discover a security vulnerability, please follow these steps:
+**Do not open a public GitHub issue for security problems.**
 
-### 1. **Do Not** Create a Public Issue
+### 1. Report Privately
 
-Please do not report security vulnerabilities through public GitHub issues, discussions, or pull requests.
+Report via **[GitHub Security Advisories](https://github.com/bold-minds/each/security/advisories/new)**. This creates a confidential channel between you and the maintainers.
 
-### 2. Report Privately
+If the Security Advisories flow is unavailable, email **security@bold-minds.com**.
 
-Send an email to **security@boldminds.tech** with:
+### 2. What to Include
 
-- **Subject**: Security Vulnerability in bold-minds/each
-- **Description**: Detailed description of the vulnerability
-- **Steps to Reproduce**: Clear steps to reproduce the issue
-- **Impact**: Potential impact and severity assessment
-- **Suggested Fix**: If you have ideas for a fix (optional)
+- A description of the issue and its impact
+- Steps to reproduce or a proof-of-concept
+- The version affected
+- Your Go version and OS, if relevant
+- Any suggested mitigation
 
 ### 3. Response Timeline
 
-- **Initial Response**: Within 48 hours
-- **Status Update**: Within 7 days
-- **Resolution**: Varies based on complexity, typically within 30 days
+- **Initial acknowledgement**: within 48 hours
+- **Triage + severity assessment**: within 7 days
+- **Resolution**: varies based on complexity, typically within 30 days
 
-## Security Considerations
+You will be credited in the release notes unless you request otherwise.
 
-`each` is a pure-computation library with a very small attack surface:
+### 4. Disclosure Process
 
-- **No network I/O.** `each` does not make network calls.
-- **No file I/O.** `each` does not read or write files.
-- **No reflection.** All operations use Go's generics and concrete type constraints.
-- **No external dependencies.** Pure Go stdlib.
-- **Immutable.** `each` never modifies input slices.
-- **Nil-safe.** All functions handle nil slices without panicking.
-
-### Known runtime-panic sources from caller misuse
-
-`each` does not panic on any documented input. However, `GroupBy` and
-`KeyBy` use the caller-provided key function's return value as a Go map
-key. If the key function returns a non-comparable dynamic type (e.g.,
-a slice or map stored inside an `any`), Go's map implementation will
-panic at runtime with a "hash of unhashable type" error. `each` does
-not recover from these panics. Callers must ensure their key functions
-return comparable values.
-
-### Predicates with side effects
-
-All `each` functions accept a predicate or key function supplied by the
-caller. These functions are evaluated one or more times per element.
-`each` does not sandbox predicate execution — if a predicate panics,
-the panic propagates to the caller. If a predicate has side effects
-(I/O, global state mutation, etc.), those side effects occur during
-the call. For `Every`, the short-circuit behavior means that elements
-after the first false are not visited, so their predicate side effects
-will not fire.
+1. We acknowledge receipt of your vulnerability report
+2. We investigate and validate the vulnerability
+3. We develop and test a fix
+4. We coordinate disclosure timing with you
+5. We release a security update
+6. We publicly acknowledge your responsible disclosure (if desired)
 
 ## Security Updates
 
-Security updates will be released as patch versions (e.g., 0.1.1),
-documented in CHANGELOG.md, and announced through GitHub releases.
+Security updates will be:
+
+- Released as patch versions
+- Documented in CHANGELOG.md
+- Announced through GitHub releases
+- Tagged with security labels
 
 ## Acknowledgments
 
-We appreciate responsible disclosure and will acknowledge security
-researchers who help improve the security of this project.
+We appreciate responsible disclosure and will acknowledge security researchers who help improve the security of this project.
